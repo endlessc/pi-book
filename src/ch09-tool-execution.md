@@ -352,24 +352,24 @@ async function executeToolCallsParallel(...) {
 
 ## 一个具体场景：读文件 + 编辑文件
 
-让我们用一个真实场景把三阶段管道串起来。假设 LLM 在一个 turn 中同时返回了两个工具调用：`read_file` 和 `edit_file`（parallel 模式）。
+让我们用一个真实场景把三阶段管道串起来。假设 LLM 在一个 turn 中同时返回了两个工具调用：`read` 和 `edit`（parallel 模式）。
 
 **Prepare 阶段**（串行）：
-1. 循环 emit `tool_execution_start` for `read_file` — 注意这发生在 prepare **之前**，所以即使工具最终验证失败，UI 也能看到"正在准备"的状态
-2. `read_file` 通过 prepare：工具存在 → TypeBox 验证 path 是 string → `beforeToolCall` 检查文件权限 → 返回 `kind: "prepared"`
-3. 循环 emit `tool_execution_start` for `edit_file`
-4. `edit_file` 通过 prepare：工具存在 → TypeBox 验证 edits 数组格式 → `beforeToolCall` 检查不在禁止列表 → 返回 `kind: "prepared"`
+1. 循环 emit `tool_execution_start` for `read` — 注意这发生在 prepare **之前**，所以即使工具最终验证失败，UI 也能看到"正在准备"的状态
+2. `read` 通过 prepare：工具存在 → TypeBox 验证 path 是 string → `beforeToolCall` 检查文件权限 → 返回 `kind: "prepared"`
+3. 循环 emit `tool_execution_start` for `edit`
+4. `edit` 通过 prepare：工具存在 → TypeBox 验证 edits 数组格式 → `beforeToolCall` 检查不在禁止列表 → 返回 `kind: "prepared"`
 
 **Execute 阶段**（并行）：
-5. `read_file.execute()` 和 `edit_file.execute()` 同时启动
-6. `read_file` 先完成（只是读磁盘），但它的结果**等待**被 finalize
-7. `edit_file` 后完成（要写磁盘），它的结果也等待被 finalize
+5. `read.execute()` 和 `edit.execute()` 同时启动
+6. `read` 先完成（只是读磁盘），但它的结果**等待**被 finalize
+7. `edit` 后完成（要写磁盘），它的结果也等待被 finalize
 
 **Finalize 阶段**（按源顺序）：
-8. 先 finalize `read_file` 的结果 — `afterToolCall` 可以脱敏文件内容
-9. 再 finalize `edit_file` 的结果 — `afterToolCall` 可以记录审计日志
+8. 先 finalize `read` 的结果 — `afterToolCall` 可以脱敏文件内容
+9. 再 finalize `edit` 的结果 — `afterToolCall` 可以记录审计日志
 
-注意一个微妙之处：如果两个工具调用中，`read_file` 的 prepare 失败了（比如 `beforeToolCall` 阻止了它），它的错误结果会在 prepare 循环中**立即**被加入 `results` 数组。然后 `edit_file` 继续 prepare 和 execute。最终 `results` 数组的顺序是：`read_file`（prepare 阶段的 immediate 结果）→ `edit_file`（execute + finalize 的结果）。
+注意一个微妙之处：如果两个工具调用中，`read` 的 prepare 失败了（比如 `beforeToolCall` 阻止了它），它的错误结果会在 prepare 循环中**立即**被加入 `results` 数组。然后 `edit` 继续 prepare 和 execute。最终 `results` 数组的顺序是：`read`（prepare 阶段的 immediate 结果）→ `edit`（execute + finalize 的结果）。
 
 这个设计的核心判断是：**工具执行不是一个独立的子系统，而是循环的有机组成部分。** 三阶段管道让循环引擎在不增加核心复杂度的前提下，为上层提供了精确的控制点。
 

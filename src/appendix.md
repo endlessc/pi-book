@@ -36,7 +36,7 @@
 
 | 模式 | 出现位置 | 章节 | 模式说明 |
 |------|---------|------|---------|
-| 插件注册（Map + register/get） | api-registry.ts, oauth/index.ts | 第 4、7 章 | 用 `Map<string, Provider>` 存储，`register()` 添加，`get()` 查找。不用 DI 框架，不用反射 |
+| 插件注册（Map + register/get） | api-registry.ts, oauth/index.ts | 第 4、7 章 | 用注册表 `Map` 存储，`register()` 添加，`get()` 查找。api-registry 按 `api` 键控，不用 DI 框架，不用反射 |
 | 有损变换（isSameModel 判断） | transform-messages.ts | 第 5 章 | 跨模型消息变换时，标记信息丢失（如 thinking 块），便于下游处理 |
 | 流式契约（Must not throw） | StreamFn type, AgentLoopConfig | 第 6、8 章 | Provider 的 stream 函数承诺不抛异常，错误通过事件流传递。调用方不需要 try-catch |
 | 双层循环（steering + follow-up） | agent-loop.ts runLoop() | 第 8 章 | 外层 steering 循环处理模型切换和重试，内层 follow-up 循环处理工具调用后的后续对话 |
@@ -75,7 +75,7 @@ sequenceDiagram
         Note over Transform: 可注入 plan 指令、截断历史、<br/>过滤敏感信息
         Transform-->>Loop: pruned messages
         Loop->>Convert: convertToLlm(messages)
-        Note over Convert: AgentMessage → LLM 格式<br/>处理 thinking 块、图片编码等
+        Note over Convert: AgentMessage → ai 层 Message<br/>过滤/转换应用层消息
         Convert-->>Loop: LLM-compatible messages
     end
     
@@ -102,7 +102,9 @@ sequenceDiagram
             Tool-->>Loop: final result
         end
         Loop->>Agent: emit(tool_execution_end)
-        Agent->>Session: persist tool result
+        Note over Agent: UI / extension 观察工具完成
+        Loop->>Agent: emit(message_end)
+        Agent->>Session: persist toolResult message
         Note over Loop: 回到上下文准备阶段，进入下一轮
         Loop->>Provider: next LLM call (with tool results)
     end
@@ -114,10 +116,10 @@ sequenceDiagram
 
 ### 关键节点说明
 
-1. **transformContext 是唯一的上下文修改点**。所有对"模型看到什么"的控制（plan mode、token 预算、历史截断）都在这里实现
-2. **convertToLlm 是跨模型兼容层**。不同 LLM 的消息格式差异（thinking 块、图片编码、工具调用格式）在这里统一处理
+1. **transformContext 是 `AgentMessage[]` 级的预处理点**。裁剪历史、注入额外上下文、实现 plan-like 控制通常放在这里
+2. **convertToLlm 是 `AgentMessage[] -> Message[]` 的边界转换**。它负责过滤或改写应用层消息；真正的跨 provider 兼容处理还会在 `pi-ai` 的 provider 层继续发生
 3. **三阶段工具执行保证了安全性**。prepare 阶段可以拒绝执行（beforeToolCall 钩子），execute 阶段实际操作，finalize 阶段格式化输出
-4. **事件驱动的持久化**。每个 message_end 和 tool_execution_end 都触发 SessionManager 持久化，实现崩溃恢复
+4. **事件驱动的持久化主要挂在 `message_end` 上**。`tool_execution_end` 主要用于 UI 和 extension 观测，真正写入会话的是随后产生的 `toolResult` 消息
 
 ## D. `/compact` 命令的端到端追踪
 
@@ -187,7 +189,7 @@ buildSessionContext()
 agent.state.messages = sessionContext.messages
   → 用重建后的消息列表替换 agent 状态
     ↓
-emit("compaction_end", { result: { tokensBefore, tokensAfter } })
+emit("compaction_end", { result: { summary, firstKeptEntryId, tokensBefore, details } })
 ```
 
 ### Phase 5：UI 更新
@@ -197,9 +199,11 @@ compaction_end 事件
     ↓
 TUI 订阅者收到事件
     ↓
-显示: "Context compacted: 150K → 8K tokens"
+清空并重建 chat
     ↓
-刷新状态栏: 更新 token 使用量显示
+插入 compaction summary message
+    ↓
+刷新 footer / 状态显示
 ```
 
 ### 完整数据流
@@ -235,15 +239,14 @@ sequenceDiagram
     Session->>Session: agent.state.messages = sessionContext.messages
     
     Session->>Session: emit(compaction_end)
-    Note over Session: tokensAfter = 8,000
-    TUI-->>TUI: 显示 "150K → 8K tokens"
+    TUI-->>TUI: 重建 chat + 插入 summary message
     
     Note over User: 下次 LLM 调用只看到<br/>重建后的 context
 ```
 
 ### 关键观察
 
-1. `/compact` **不经过 agent 循环**。它是一个同步的本地操作 + 一次独立的 LLM 调用
+1. `/compact` **不经过 agent 循环**。它是一次本地命令处理 + 一次独立的 LLM 调用
 2. **状态重建而非直接替换**。`appendCompaction` 记录压缩事件后，`buildSessionContext()` 从 entries 重建上下文，再赋值给 `agent.state.messages`。不是直接构造一条 summary 消息替换
 3. **持久化保留历史**。SessionManager 记录 compaction 事件，但不删除历史条目。JSONL 是 append-only 的，`buildSessionContext()` 负责根据 compaction 记录决定哪些 entries 构成当前 context
 4. **事件驱动 UI**。TUI 不直接参与 compaction 逻辑，只订阅事件更新显示
@@ -252,7 +255,7 @@ sequenceDiagram
 
 | 我想做什么 | 起点文件/函数 | 参考章节 |
 |-----------|-------------|---------|
-| 加一个新 LLM provider | `registerApiProvider()` + `models.json` | 第 4 章 |
+| 加一个新 LLM provider | `packages/ai` 中实现 provider + `registerApiProvider()` + model wiring | 第 4、18 章 |
 | 加一个新工具 | Extension API → `registerTool()` | 第 15、19 章 |
 | 加一个新 slash command | Extension API → `registerCommand()` | 第 15 章 |
 | 改 system prompt | 创建 `SYSTEM.md` 或 `AGENTS.md` | 第 13-14 章 |

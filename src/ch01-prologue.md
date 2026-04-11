@@ -102,7 +102,7 @@ graph TB
 
 最内层解决一个纯粹的问题：如何用统一的接口调用不同的 LLM provider。
 
-**Provider Registry** 是一个极简的注册表（`api-registry.ts` 只有 98 行），支持 Anthropic、OpenAI、Google、Bedrock、Mistral 等。注册一个新 provider 只需提供一个函数：给定 context 和 options，返回事件流。
+**Provider Registry** 是一个极简的注册表（`api-registry.ts` 只有 98 行），支持 Anthropic、OpenAI、Google、Bedrock、Mistral 等。注册一个新 provider 至少要提供 `api` 标识、`stream` 和 `streamSimple` 这组接口面，然后把它们挂到注册表里。
 
 **事件流** 是 pi-ai 的核心输出格式。无论哪个 provider，调用结果都被标准化为一系列事件：`text-delta`、`tool-call-delta`、`usage` 等。下游代码完全不需要知道底层 provider 的 API 格式。
 
@@ -128,9 +128,9 @@ graph TB
 
 **Compaction** 是上下文窗口管理。当消息历史接近 context window 上限时，compaction 把旧消息压缩成摘要。这是一个有损操作 — 压缩后的摘要会丢失细节 — 但它让 agent 可以持续工作而不会因为 context window 满了而中断。
 
-**Prompt 装配** 把系统 prompt 的各个部分（基础指令、用户自定义、项目上下文文件如 AGENTS.md）组装成最终发给 LLM 的 system prompt。这是一个看似简单但细节极多的过程（第 12 章详述）。
+**Prompt 装配** 把系统 prompt 的各个部分（基础指令、用户自定义、项目上下文文件如 AGENTS.md）组装成最终发给 LLM 的 system prompt。这是一个看似简单但细节极多的过程（第 14 章详述）。
 
-**Extension / Skill** 是能力外置的机制。Extension 是代码模块（可以注册新工具、新 provider），Skill 是指令文档（Markdown 格式，告诉 agent 如何完成特定任务）。两者都通过 Resource Loader 统一加载。
+**Extension / Skill** 是能力外置的机制。Extension 是代码模块（可以注册新工具、新命令、事件处理器和 UI 扩展），Skill 是指令文档（Markdown 格式，告诉 agent 如何完成特定任务）。两者都通过 Resource Loader 统一加载。
 
 ### L4：产品壳
 
@@ -158,7 +158,7 @@ pi 的定位更接近运行时：
 
 **不讲怎么用 pi**。这不是用户手册。不会教你怎么安装、怎么配置 API key、怎么使用各种命令。pi 有独立的 README 和文档来做这件事。
 
-**不讲 prompt engineering**。虽然 pi 的 system prompt 装配是一个重要话题（第 12 章），但本书关注的是"system prompt 是怎么组装的"，而不是"怎么写出更好的 prompt"。
+**不讲 prompt engineering**。虽然 pi 的 system prompt 装配是一个重要话题（第 14 章），但本书关注的是"system prompt 是怎么组装的"，而不是"怎么写出更好的 prompt"。
 
 **不讲具体 provider 的 API 细节**。Anthropic Messages API 的参数、OpenAI Responses API 的格式 — 这些是各 provider 的文档该讲的内容。本书只关注 pi 如何抽象掉这些差异。
 

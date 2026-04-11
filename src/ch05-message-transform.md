@@ -325,21 +325,21 @@ if (assistantMsg.stopReason === "error"
     "model": "claude-sonnet-4-6",
     "content": [
       { "type": "thinking",
-        "thinking": "用户要看文件内容，我用 read_file 工具",
+        "thinking": "用户要看文件内容，我用 read 工具",
         "thinkingSignature": "sig_abc123..." },
       { "type": "text",
         "text": "我来读取文件内容。",
         "textSignature": "{\"v\":1,\"id\":\"msg_01X...\",\"phase\":\"commentary\"}" },
       { "type": "toolCall",
-        "id": "toolu_01ABC", "name": "read_file",
+        "id": "toolu_01ABC", "name": "read",
         "arguments": { "path": "src/main.rs" } }
     ],
-    "stopReason": "tool_use"
+    "stopReason": "toolUse"
   },
   {
     "role": "toolResult",
     "toolCallId": "toolu_01ABC",
-    "toolName": "read_file",
+    "toolName": "read",
     "content": [{ "type": "text", "text": "fn main() { ... }" }],
     "isError": false
   }
@@ -357,18 +357,18 @@ if (assistantMsg.stopReason === "error"
     "model": "claude-sonnet-4-6",
     "content": [
       { "type": "text",
-        "text": "用户要看文件内容，我用 read_file 工具" },
+        "text": "用户要看文件内容，我用 read 工具" },
       { "type": "text",
         "text": "我来读取文件内容。" },
       { "type": "toolCall",
-        "id": "toolu_01ABC", "name": "read_file",
+        "id": "toolu_01ABC", "name": "read",
         "arguments": { "path": "src/main.rs" } }
     ]
   },
   {
     "role": "toolResult",
     "toolCallId": "toolu_01ABC",
-    "toolName": "read_file",
+    "toolName": "read",
     "content": [{ "type": "text", "text": "fn main() { ... }" }],
     "isError": false
   }
@@ -440,7 +440,7 @@ if (assistantMsg.stopReason === "error"
 
 核心判断：**有损交接好过不能交接。** 丢失一些 thinking 细节，比"切换模型后对话完全中断"要好得多。
 
-第 8 章将展示循环引擎如何在每次 LLM 调用前通过 `convertToLlm` 触发消息变换 — `transformMessages` 正是在那个管道中被调用的。
+第 8 章将展示循环引擎如何在每次 LLM 调用前把 `AgentMessage[]` 收敛成 ai 层 `Message[]`。真正的 `transformMessages` 则发生在各 provider 构造请求时，用来把这组统一消息进一步变成目标 API 可接受的格式。
 
 ---
 

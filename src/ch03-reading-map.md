@@ -23,23 +23,23 @@
 
 **1. `packages/agent/src/types.ts`** — 这是整个 agent 系统的 "schema"。你会在这里找到 `AgentMessage`（所有消息类型的联合）、`AgentTool`（工具的定义接口）、`AgentEvent`（循环引擎产出的事件流）和 `AgentLoopConfig`（循环的配置项）。理解这些类型后，你看任何其他文件都能立刻知道数据流的形状。这个文件不长，但信息密度极高 — 建议逐行读完。
 
-**2. `packages/ai/src/api-registry.ts`** — 只有 98 行的 provider 注册表。你会看到 `registerApiProvider` 函数和 `getApiProvider` 函数 — 前者把一个 provider 名称和一个流式调用函数绑定在一起，后者根据名称取出对应的调用函数。整个系统的 LLM 调用多态性就建立在这 98 行之上。读完它你会理解为什么添加一个新 provider 如此简单。
+**2. `packages/ai/src/api-registry.ts`** — 只有 98 行的 API provider 注册表。你会看到 `registerApiProvider` 函数和 `getApiProvider` 函数 — 前者把一个 `api` 标识和一组流式调用函数绑定在一起，后者根据 `model.api` 取出对应实现。整个系统的 LLM 调用多态性就建立在这 98 行之上。读完它你会理解为什么添加一个新 provider 如此简单。
 
 **3. `packages/agent/src/agent-loop.ts`** — 循环引擎的完整实现。你会看到一个 `while(true)` 循环，里面的逻辑是：调用 LLM → 收集事件 → 如果有 tool call 就执行 → 把 tool result 放回消息列表 → 继续循环。关键点是：这个函数是**纯函数式**的 — 它的所有输入（消息、工具、配置）都从参数传入，所有输出都通过事件流返回。第 8 章会详细分析这个设计。
 
 **4. `packages/agent/src/agent.ts`** — agentLoop 的有状态包装器。你会看到 `Agent` 类持有消息历史、工具列表、abort controller 等状态，然后在内部调用 agentLoop。它的存在回答了一个问题：如果循环引擎是无状态的，状态保存在哪里？答案是这个薄壳。它是 "stateful convenience layer"。
 
-**5. `packages/ai/src/stream.ts`** — pi-ai 层的公共 API 入口。你会看到 `stream` 函数 — 给定一个 model 和 context，返回一个 `AssistantMessageEventStream`。这是整个系统中离 "调用 LLM" 最近的接口。它的实现很简单：从 api-registry 取出对应的 provider 函数，然后调用它。简单是因为复杂性被推到了各个 provider 的实现中。
+**5. `packages/ai/src/stream.ts`** — pi-ai 层的公共 API 入口。你会看到 `stream` 函数 — 给定一个 model 和 context，返回一个 `AssistantMessageEventStream`。这是整个系统中离 "调用 LLM" 最近的接口。它的实现很简单：按 `model.api` 从 api-registry 取出对应实现，然后调用它。简单是因为复杂性被推到了各个 provider 的实现中。
 
 **6. `packages/ai/src/types.ts`** — pi-ai 层的类型系统。你会找到 `Model` 类型（一个模型的完整元数据：id、provider、cost、context window 等）、`Context` 类型（发送给 LLM 的完整上下文：messages、tools、system prompt 等）和各种事件类型。这些类型定义了 pi-ai 层的 "公共 API 契约" — 上层代码（agent-core）只通过这些类型与 ai 层交互。
 
-**7. `packages/coding-agent/src/core/session-manager.ts`** — 会话的持久化和分支管理。你会看到会话如何被序列化到磁盘（JSON 文件）、如何创建分支（fork）、如何回退到历史节点。这是让 pi 的对话可以"时间旅行"的关键机制。如果你想理解 pi 的交互模型为什么比简单的聊天框更强大，这是入口。
+**7. `packages/coding-agent/src/core/session-manager.ts`** — 会话的持久化和分支管理。你会看到会话如何被序列化到磁盘（JSONL 文件）、如何创建分支（fork）、如何回退到历史节点。这是让 pi 的对话可以"时间旅行"的关键机制。如果你想理解 pi 的交互模型为什么比简单的聊天框更强大，这是入口。
 
 **8. `packages/coding-agent/src/core/system-prompt.ts`** — Prompt 装配的完整逻辑。你会看到 system prompt 是如何从多个来源（基础模板、AGENTS.md 文件、用户自定义、extension 注入）层层拼装的。理解这个文件的关键在于：system prompt 不是一个静态字符串，而是一个运行时动态组装的产物。这解释了为什么 pi 可以根据项目上下文、用户配置、已加载的 skill 动态调整 agent 的行为。
 
 **9. `packages/coding-agent/src/core/tools/edit.ts`** — 文件编辑工具的实现。你会看到一个完整的工具定义：tool schema（告诉 LLM 这个工具接受什么参数）、执行逻辑（实际操作文件系统）、结果格式（返回什么给 LLM）。这是理解 "pi 的工具是怎么设计的" 最好的范例 — 不是因为它最复杂，而是因为它最能代表设计模式。读完一个工具，你就知道其他所有工具的结构。
 
-**10. `packages/coding-agent/src/core/extensions/types.ts`** — Extension API 的完整类型定义。你会看到 Extension 可以做什么：注册新工具（tools）、注册新 slash command（commands）、注册新 API provider（apiProviders）、提供 skill 和 prompt 路径。这个文件定义了 pi 的**可扩展性边界** — Extension 能做什么、不能做什么，全由这些类型决定。
+**10. `packages/coding-agent/src/core/extensions/types.ts`** — Extension API 的完整类型定义。你会看到 Extension 可以做什么：注册新工具（tools）、注册新命令（commands）、快捷键和 CLI flag，以及通过 context 访问会话和 UI。这个文件定义了 pi 的**可扩展性边界** — Extension 能做什么、不能做什么，全由这些类型决定。
 
 ## 最后读的 10 个文件
 
@@ -75,13 +75,13 @@ graph TD
     
     subgraph pi-agent["pi-agent-core/src/types.ts"]
         AgentMsg["AgentMessage\n(ai 层 Message + 自定义消息)"]
-        AgentTool["AgentTool\n(引用 ai 层的 Context)"]
-        AgentEvent["AgentEvent\n(包装 ai 层的 Event)"]
+        AgentTool["AgentTool\n(扩展自 ai 层 Tool)"]
+        AgentEvent["AgentEvent\n(高层运行时事件)"]
         AgentConfig["AgentLoopConfig"]
     end
     
     subgraph pi-coding["pi-coding-agent 各模块"]
-        Session["Session\n(包含 AgentMessage[])"]
+        Session["会话系统\n(围绕 AgentMessage[] 组织)"]
         Tool["具体工具实现\n(实现 AgentTool)"]
         ExtType["Extension\n(注册 AgentTool[])"]
     end
@@ -106,7 +106,7 @@ graph TD
 
 **pi-ai → pi-agent-core**：`toolResult` 其实已经在 ai 层的 `Message` 联合里了。agent-core 在此基础上做的主要扩展有两件事：一是通过 `CustomAgentMessages` 开放自定义消息类型，二是把 ai 层的 `AssistantMessageEvent` 嵌入 `AgentEvent.message_update` 这类更高层的运行时事件中。
 
-**pi-agent-core → pi-coding-agent**：coding-agent 的 `Session` 持有 `AgentMessage[]` — 会话的本质就是一个消息数组。具体的工具（edit、bash、read 等）实现 `AgentTool` 接口。Extension 向系统注册新的 `AgentTool[]`。
+**pi-agent-core → pi-coding-agent**：coding-agent 的 `AgentSession` / `SessionManager` 围绕 `AgentMessage[]` 来组织会话上下文。具体的工具（edit、bash、read 等）实现 `AgentTool` 接口。Extension 向系统注册新的 `AgentTool[]`。
 
 **泛型边界**：`Model<TApi>` 和 `StreamFunction<TApi, TOptions>` 这类 provider 层接口是泛型的，用来约束“这个模型对应哪种 API 族”。但到了通用的 `Context`，消息和工具格式已经被统一，不再按 provider 继续分化。也就是说，类型安全主要集中在 provider/stream 边界，而不是把 `Context` 一路参数化到底。
 
@@ -114,12 +114,12 @@ graph TD
 
 假设你想理解 "工具调用的结果是怎么流回 LLM 的"。可以这样跟踪：
 
-1. 在 `agent/src/types.ts` 中找到 `AgentTool` — 它的 `execute` 方法返回 `ToolResult`
-2. 在 `agent/src/agent-loop.ts` 中搜索 `ToolResult` — 你会看到循环引擎把 tool result 包装成 `ToolResultMessage` 并加入消息列表
+1. 在 `agent/src/types.ts` 中找到 `AgentTool` — 它的 `execute` 方法返回 `AgentToolResult`
+2. 在 `agent/src/agent-loop.ts` 中搜索 `AgentToolResult` 或 `ToolResultMessage` — 你会看到循环引擎把工具执行结果包装成 `ToolResultMessage` 并加入消息列表
 3. 在 `ai/src/types.ts` 中找到 `ToolResultMessage` — 它是 `Context.messages` 数组中合法的消息类型之一
 4. 在 `ai/src/providers/anthropic.ts` 中搜索 `ToolResultMessage` — 你会看到它被转换成 Anthropic API 要求的 `tool_result` content block
 
-整个链路：`工具执行 → ToolResult → ToolResultMessage → 消息列表 → Provider 转换 → API 请求`。每一步都有对应的类型。
+整个链路：`工具执行 → AgentToolResult → ToolResultMessage → 消息列表 → Provider 转换 → API 请求`。每一步都有对应的类型。
 
 ## 阅读策略
 
@@ -155,13 +155,13 @@ pi-ai 支持 10+ 个 provider（Anthropic、OpenAI Responses、OpenAI Completion
 
 ### 误区 4：把 Extension 和 Skill 混为一谈
 
-Extension 是**代码模块**（TypeScript/JavaScript），可以注册新工具、新 provider。Skill 是**指令文档**（Markdown），只能被注入到 system prompt 中。两者的能力边界完全不同。
+Extension 是**代码模块**（TypeScript/JavaScript），可以注册新工具、新命令、事件处理器和 UI 扩展。Skill 是**指令文档**（Markdown），只能被注入到 system prompt 中。两者的能力边界完全不同。
 
 很多人看到 "Extension 可以提供 skill 路径" 就以为 Extension 包含 Skill。准确的关系是：Extension 可以**注册额外的 Skill 加载路径**，但 Extension 本身和 Skill 是两种独立的资源类型。
 
 ### 误区 5：低估 types.ts 的重要性
 
-agent/src/types.ts 只有几百行，看起来"没什么内容"。但这个文件是整个 agent 系统的骨架。每个类型的每个字段都对应着一个设计决策。比如 `AgentTool` 中的 `isReadOnly` 字段 — 为什么需要区分只读和写入工具？因为它影响了工具是否可以并行执行（第 22 章详述）。
+agent/src/types.ts 只有几百行，看起来"没什么内容"。但这个文件是整个 agent 系统的骨架。每个类型的每个字段都对应着一个设计决策。比如 `AgentLoopConfig` 中的 `toolExecution` 字段 — 为什么需要区分 `sequential` 和 `parallel`？因为它直接影响工具 prepare 阶段和 execute 阶段的并发语义（第 9 章详述）。
 
 正确做法：types.ts 至少读两遍。第一遍建立整体印象，读完几章设计分析后再回来读第二遍 — 你会发现每个字段都有了具体的含义。
 

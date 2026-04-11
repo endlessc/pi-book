@@ -361,7 +361,7 @@ export interface Usage {
 
 ## 一次典型 LLM 响应的事件序列
 
-理论分析完了，让我们看一个具体的场景：用户要求 coding agent 读取一个文件。模型决定调用 `read_file` 工具，同时输出一段说明文本。整个过程产生的事件序列如下：
+理论分析完了，让我们看一个具体的场景：用户要求 coding agent 读取一个文件。模型决定调用 `read` 工具，同时输出一段说明文本。整个过程产生的事件序列如下：
 
 ```mermaid
 sequenceDiagram
@@ -374,8 +374,8 @@ sequenceDiagram
     Note over P,S: 模型先输出思考过程
     P->>S: thinking_start {contentIndex: 0}
     P->>S: thinking_delta {contentIndex: 0, delta: "用户需要读取文件..."}
-    P->>S: thinking_delta {contentIndex: 0, delta: "我应该调用 read_file..."}
-    P->>S: thinking_end {contentIndex: 0, content: "用户需要读取文件...我应该调用 read_file..."}
+    P->>S: thinking_delta {contentIndex: 0, delta: "我应该调用 read..."}
+    P->>S: thinking_end {contentIndex: 0, content: "用户需要读取文件...我应该调用 read..."}
     
     Note over P,S: 然后输出给用户看的文本
     P->>S: text_start {contentIndex: 1}
@@ -387,7 +387,7 @@ sequenceDiagram
     P->>S: toolcall_start {contentIndex: 2}
     P->>S: toolcall_delta {contentIndex: 2, delta: '{"path":"/src/'}
     P->>S: toolcall_delta {contentIndex: 2, delta: 'main.ts"}'}
-    P->>S: toolcall_end {contentIndex: 2, toolCall: {id: "tc_1", name: "read_file", arguments: {path: "/src/main.ts"}}}
+    P->>S: toolcall_end {contentIndex: 2, toolCall: {id: "tc_1", name: "read", arguments: {path: "/src/main.ts"}}}
 
     Note over P,S: 因为有 tool call，reason 是 toolUse
     P->>S: done {reason: "toolUse", message: AssistantMessage}

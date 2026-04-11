@@ -155,7 +155,7 @@ RPC 提供了完整的会话管理能力：
 
 ## Extension UI 桥接
 
-RPC 模式需要处理一个特殊问题：extension 的 UI 交互。在 interactive 模式中，extension 可以通过 `showDialog()`、`showNotification()` 等方法与用户交互。但 RPC 模式没有 TUI — 这些交互需要被序列化为 JSON 请求，发送给 RPC 客户端处理。
+RPC 模式需要处理一个特殊问题：extension 的 UI 交互。在 interactive 模式中，extension 通过 UI context 的 `select()`、`confirm()`、`input()`、`notify()`、`setStatus()`、`editor()` 等方法与用户交互。但 RPC 模式没有 TUI — 这些交互需要被序列化为 JSON 请求，发送给 RPC 客户端处理。
 
 ```typescript
 // packages/coding-agent/src/modes/rpc/rpc-types.ts:211-246
