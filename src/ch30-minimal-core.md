@@ -82,9 +82,11 @@ class MyAgent extends AgentFramework {
 // 工具只是一个满足 AgentTool 接口的对象
 const searchTool: AgentTool<{ query: string }> = {
   name: "search",
-  schema: { /* JSON Schema */ },
-  async execute({ args }) {
-    return await doSearch(args.query);
+  label: "search",
+  description: "Search for matching content",
+  parameters: searchSchema,
+  async execute(_toolCallId, { query }) {
+    return await doSearch(query);
   },
 };
 // 传入 Agent 的 initialState.tools 即可
@@ -125,15 +127,15 @@ const config: AgentLoopConfig = {
 
 ```
 pi CLI（终端 coding agent）
-├── 使用：TUI 渲染、本地文件系统工具、交互式确认
+├── 使用：TUI 渲染、本地文件系统工具、自定义权限钩子
 ├── 不使用：Slack API、Docker sandbox
 
 mom（Slack bot）
 ├── 使用：Docker sandbox、Slack 消息输出、事件调度
-├── 不使用：TUI、交互式确认、本地工具权限
+├── 不使用：TUI、同步确认流、本地工具权限
 
 web-ui（浏览器 IDE）
-├── 使用：RPC 通信、WebSocket 事件流
+├── 使用：浏览器内 Agent 视图、proxy-aware streamFn、IndexedDB 存储
 ├── 不使用：TUI、Slack API、Docker sandbox
 ```
 

@@ -101,9 +101,9 @@ graph BT
 
 **pi (pods)**（`@mariozechner/pi`）：只依赖 `pi-agent-core`。它是 GPU pod 编排工具，需要 agent 能力但不需要 coding agent 的产品层逻辑。
 
-**pi-web-ui**（`@mariozechner/pi-web-ui`）：依赖 `pi-ai`、`pi-agent-core` 和 `pi-tui`。Web UI 使用 pi-agent-core 的 `Agent` 类驱动交互并订阅 `AgentEvent`，同时使用 pi-ai 的 provider 抽象和 pi-tui 的文本工具。
+**pi-web-ui**（`@mariozechner/pi-web-ui`）：在当前 `package.json` 的 direct dependencies 中只声明了 `pi-ai` 和 `pi-tui`。但从实现上看，`AgentInterface` 直接 import 了 `pi-agent-core` 的 `Agent` / `AgentEvent`，所以它在架构上仍然紧贴 core 层，只是这个耦合没有体现在当前 manifest 的 direct dependency 图里。
 
-### 依赖关系图（从实际 package.json 提取）
+### 依赖关系图（按 direct dependencies 绘制）
 
 ```mermaid
 graph LR
@@ -119,7 +119,6 @@ graph LR
     AI --> Coding
     AI --> Mom
     AI --> Web
-    Core --> Web
     Core --> Coding
     Core --> Mom
     Core --> Pods
@@ -132,6 +131,8 @@ graph LR
 ```
 
 这张图的关键特征：没有环。箭头严格从底层指向上层。这不是偶然的 — 它是设计约束。
+
+需要单独说明的是：这张图只反映 `package.json` 里的 direct dependencies，不等于源码中的全部耦合关系。`pi-web-ui` 的实现代码仍直接面向 `pi-agent-core` 的 `Agent` / `AgentEvent`，所以在第 1 张分层图里把它画在 core 之上仍然是合理的。
 
 ## 包的规模与职责
 

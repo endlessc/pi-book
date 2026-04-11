@@ -68,13 +68,13 @@ pi 的设计中，类型不仅是编译器检查的工具，更是**跨层通信
 graph TD
     subgraph pi-ai["pi-ai/src/types.ts"]
         Model["Model<TApi>"]
-        Context["Context<TApi>"]
+        Context["Context"]
         Event["AssistantMessageEvent"]
         Stream["AssistantMessageEventStream"]
     end
     
     subgraph pi-agent["pi-agent-core/src/types.ts"]
-        AgentMsg["AgentMessage\n(extends ai 层的消息类型)"]
+        AgentMsg["AgentMessage\n(ai 层 Message + 自定义消息)"]
         AgentTool["AgentTool\n(引用 ai 层的 Context)"]
         AgentEvent["AgentEvent\n(包装 ai 层的 Event)"]
         AgentConfig["AgentLoopConfig"]
@@ -104,11 +104,11 @@ graph TD
 
 从图中可以看到三个关键的类型边界：
 
-**pi-ai → pi-agent-core**：agent-core 的 `AgentMessage` 扩展了 ai 层的消息类型（加入了 tool result 等）。`AgentEvent` 包装了 ai 层的 `AssistantMessageEvent`（加入了 tool 执行事件）。这意味着 agent-core 的事件流是 ai 层事件流的超集。
+**pi-ai → pi-agent-core**：`toolResult` 其实已经在 ai 层的 `Message` 联合里了。agent-core 在此基础上做的主要扩展有两件事：一是通过 `CustomAgentMessages` 开放自定义消息类型，二是把 ai 层的 `AssistantMessageEvent` 嵌入 `AgentEvent.message_update` 这类更高层的运行时事件中。
 
 **pi-agent-core → pi-coding-agent**：coding-agent 的 `Session` 持有 `AgentMessage[]` — 会话的本质就是一个消息数组。具体的工具（edit、bash、read 等）实现 `AgentTool` 接口。Extension 向系统注册新的 `AgentTool[]`。
 
-**泛型传递**：`Model<TApi>` 的泛型参数 `TApi` 一路传递到 `Context<TApi>`，再到 `Stream`。这确保了类型安全 — 如果你用 Anthropic 的 model，context 里只能放 Anthropic 支持的参数。这个泛型链在编译时就阻止了 "把 OpenAI 的参数传给 Anthropic provider" 这类错误。
+**泛型边界**：`Model<TApi>` 和 `StreamFunction<TApi, TOptions>` 这类 provider 层接口是泛型的，用来约束“这个模型对应哪种 API 族”。但到了通用的 `Context`，消息和工具格式已经被统一，不再按 provider 继续分化。也就是说，类型安全主要集中在 provider/stream 边界，而不是把 `Context` 一路参数化到底。
 
 ### 跟着一个类型读代码的例子
 

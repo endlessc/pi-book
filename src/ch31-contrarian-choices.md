@@ -38,28 +38,25 @@ Agent 工具和其他工具（bash、edit、read）一样，都是满足 `AgentT
 
 ```typescript
 // 概念代码，展示核心逻辑
-const agentTool: AgentTool<{ prompt: string }> = {
+const agentTool: AgentTool<typeof agentToolSchema> = {
   name: "Agent",
-  schema: {
-    type: "object",
-    properties: {
-      prompt: { type: "string", description: "子任务描述" },
-    },
-  },
-  async execute({ args, context }) {
+  label: "Agent",
+  description: "Delegate a bounded sub-task to another agent run",
+  parameters: agentToolSchema,
+  async execute(_toolCallId, { prompt }) {
     // Step 2：在工具的 execute 函数里启动新的 agent 循环
     const subAgent = new Agent({
       initialState: {
         systemPrompt: "你是一个专注于子任务的 agent...",
-        model: context.model,
-        tools: context.tools,  // 复用父 agent 的工具
+        model: parentAgent.state.model,
+        tools: parentAgent.state.tools,  // 复用父 agent 的工具
       },
       convertToLlm,
-      getApiKey: context.getApiKey,
+      getApiKey,
     });
 
     // Step 3：运行子 agent 循环
-    const result = await subAgent.prompt(args.prompt);
+    const result = await subAgent.prompt(prompt);
 
     // Step 4：收集子 agent 的输出作为 tool result 返回
     const output = subAgent.state.messages
@@ -141,10 +138,12 @@ export default {
   setup(api) {
     api.registerTool({
       name: "my-tool",
-      schema: { /* ... */ },
-      execute: async ({ args }) => { /* ... */ },
+      label: "my-tool",
+      description: "My custom tool",
+      parameters: myToolSchema,
+      execute: async (_toolCallId, args) => { /* ... */ },
     });
-    api.onEvent("tool_execution_end", (event) => {
+    api.on("tool_execution_end", (event) => {
       // 监听所有工具执行
     });
   },
@@ -191,17 +190,19 @@ Agent wants to run: rm -rf node_modules
 
 ### pi 的做法
 
-pi 不内建 permission popup，但 `beforeToolCall` 钩子（第 9 章）让产品层可以实现任何权限策略。
+pi 不内建 permission popup。官方 README 的表述就是 “No permission popups”。但 `beforeToolCall` 钩子（第 9 章）让产品层可以实现自己的权限策略。
 
-**策略 1：简单弹窗（pi CLI 的默认行为）**
+**策略 1：某个产品壳自行实现确认流**
 ```typescript
 const config: AgentLoopConfig = {
-  beforeToolCall: async (toolName, args) => {
-    if (isDangerous(toolName, args)) {
-      const confirmed = await ctx.ui.confirm(
-        `Allow ${toolName}?`
+  beforeToolCall: async ({ toolCall, args }) => {
+    if (isDangerous(toolCall.name, args)) {
+      const confirmed = await confirmDangerousAction(
+        `Allow ${toolCall.name}?`
       );
-      if (!confirmed) return { type: "deny" };
+      if (!confirmed) {
+        return { block: true, reason: "User denied tool execution" };
+      }
     }
     return undefined;  // 允许执行
   },
@@ -211,11 +212,11 @@ const config: AgentLoopConfig = {
 **策略 2：命令白名单**
 ```typescript
 const config: AgentLoopConfig = {
-  beforeToolCall: async (toolName, args) => {
-    if (toolName === "bash") {
+  beforeToolCall: async ({ toolCall, args }) => {
+    if (toolCall.name === "bash") {
       const cmd = (args as { command: string }).command;
       if (!ALLOWED_COMMANDS.some(p => cmd.startsWith(p))) {
-        return { type: "deny", message: "Command not in whitelist" };
+        return { block: true, reason: "Command not in whitelist" };
       }
     }
     return undefined;
@@ -234,11 +235,11 @@ const config: AgentLoopConfig = {
 **策略 4：基于角色的审批**
 ```typescript
 const config: AgentLoopConfig = {
-  beforeToolCall: async (toolName, args, context) => {
-    const userRole = getUserRole(context.userId);
+  beforeToolCall: async ({ toolCall }) => {
+    const userRole = getCurrentUserRole();
     if (userRole === "admin") return undefined;
-    if (RESTRICTED_TOOLS.includes(toolName)) {
-      return { type: "deny", message: "Insufficient privileges" };
+    if (RESTRICTED_TOOLS.includes(toolCall.name)) {
+      return { block: true, reason: "Insufficient privileges" };
     }
     return undefined;
   },
@@ -247,7 +248,7 @@ const config: AgentLoopConfig = {
 
 同一个钩子，四种完全不同的安全策略。内建 popup 只能实现第一种。更重要的是，**安全策略和产品形态强相关**：
 
-- CLI：交互式确认合理（用户在终端前面）
+- CLI：很适合自行实现交互式确认（用户在终端前面）
 - Slack bot：用户不在"终端前面"，确认流程需要异步消息
 - CI/CD 管道：完全自动，任何人工确认都会打断流水线
 - 内部工具：基于角色的权限，不是"每次确认"
@@ -321,12 +322,12 @@ function createPlanModeConfig(
     },
 
     // 在 planning 阶段禁止工具调用
-    beforeToolCall: async (toolName) => {
+    beforeToolCall: async () => {
       if (getState() === "planning") {
         return {
-          type: "deny",
-          message: "Planning phase - tools disabled"
-        };
+          block: true,
+          reason: "Planning phase - tools disabled"
+        }
       }
       return undefined;
     },

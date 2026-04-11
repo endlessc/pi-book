@@ -15,7 +15,7 @@
 ```mermaid
 graph TB
     subgraph Structured["结构化工具（受约束）"]
-        Read["read\n偏移/分页读取\n带行号输出"]
+        Read["read\n偏移/分页读取\n续读提示"]
         Write["write\n创建/追加/覆盖\n路径解析"]
         Edit["edit\n精确替换\n串行化队列"]
         Find["find\nglob 模式搜索\n结果限制"]

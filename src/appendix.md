@@ -7,29 +7,30 @@
 | 类型 | 文件 | 用途 | 关键字段 |
 |------|------|------|---------|
 | `Model<TApi>` | types.ts | 模型定义 | `id: string` — 唯一标识（如 `claude-sonnet-4-5`）<br>`provider: string` — 提供方（如 `anthropic`）<br>`api: TApi` — API 类型标记<br>`cost: { input, output, cacheRead, cacheWrite }` — 每 token 价格<br>`contextWindow: number` — 上下文窗口大小<br>`maxOutput?: number` — 最大输出 token 数 |
-| `Context` | types.ts | LLM 调用上下文 | `systemPrompt: string` — 系统提示词<br>`messages: Message[]` — 对话历史<br>`tools?: ToolDefinition[]` — 可用工具定义<br>`maxTokens?: number` — 本次调用最大输出 |
-| `AssistantMessageEvent` | types.ts | 流式事件 | `type: "start" \| "delta" \| "done"` — 事件阶段<br>`content?: ContentPart` — 内容片段（text_delta, tool_call 等）<br>`usage?: Usage` — token 使用量（仅 done 阶段） |
-| `StreamFunction` | types.ts | Provider 必须实现的流式函数 | 签名：`(model, context, signal?) => AsyncIterable<AssistantMessageEvent>`<br>契约：must not throw，错误通过事件传递 |
+| `Context` | types.ts | LLM 调用上下文 | `systemPrompt?: string` — 可选系统提示词<br>`messages: Message[]` — 对话历史<br>`tools?: Tool[]` — 可用工具定义 |
+| `AssistantMessageEvent` | types.ts | 流式事件 | `start` — 初始化 partial assistant message<br>`text_* / thinking_* / toolcall_*` — 分块流式更新<br>`done` — 成功结束并携带最终消息<br>`error` — 失败或中止结束并携带错误消息 |
+| `StreamFunction` | types.ts | Provider 必须实现的流式函数 | 签名：`(model, context, options?) => AssistantMessageEventStream`<br>契约：返回事件流，不通过抛异常传递运行期错误 |
 | `Usage` | types.ts | Token 使用量 | `input: number` — 输入 token<br>`output: number` — 输出 token<br>`cacheRead: number` — 缓存读取<br>`cacheWrite: number` — 缓存写入<br>`cost: { input, output, cacheRead, cacheWrite, total }` |
 
 ### pi-agent-core 层
 
 | 类型 | 文件 | 用途 | 关键字段 |
 |------|------|------|---------|
-| `AgentMessage` | types.ts | 扩展消息类型 | 联合类型：LLM 消息 + `CustomAgentMessages` 声明合并<br>支持 `role: "user" \| "assistant" \| "system"` |
+| `AgentMessage` | types.ts | 扩展消息类型 | 联合类型：`Message \| CustomAgentMessages[...]`<br>标准消息来自 `pi-ai`：`user / assistant / toolResult`<br>产品层可通过声明合并追加自定义消息 |
 | `AgentTool<TParams>` | types.ts | 工具定义 | `name: string` — 工具名称<br>`parameters: TParams` — 参数（继承 Tool\<TParameters\>）<br>`label: string` — UI 显示的可读名称<br>`prepareArguments?: (args) => Static<TParams>` — 可选的参数预处理<br>`execute(toolCallId, params, signal, onUpdate): Promise<AgentToolResult>` — 执行函数 |
-| `AgentEvent` | types.ts | 循环生命周期事件 | `type` 联合：<br>`message_start / message_end` — 消息开始/结束<br>`tool_execution_start / tool_execution_end` — 工具执行开始/结束<br>`compaction_start / compaction_end` — 压缩开始/结束<br>`auto_retry_start` — 自动重试<br>`agent_end` — 循环结束 |
-| `AgentLoopConfig` | types.ts | 循环引擎配置 | `transformContext?: (msgs) => msgs` — 上下文变换回调<br>`beforeToolCall?: (name, args) => Promise<deny \| undefined>` — 工具执行前钩子<br>`convertToLlm: (msgs) => LlmMsgs` — 消息格式转换<br>`getApiKey: () => Promise<string>` — API key 获取 |
-| `AgentState` | agent.ts | Agent 可变状态 | `systemPrompt: string` — 当前系统提示词<br>`model: Model` — 当前模型<br>`tools: AgentTool[]` — 当前工具列表<br>`messages: AgentMessage[]` — 消息历史<br>`thinkingLevel: string` — 思考模式 |
+| `AgentEvent` | types.ts | 循环生命周期事件 | `type` 联合：<br>`agent_start / agent_end` — 本轮运行开始/结束<br>`turn_start / turn_end` — 一轮 assistant turn 开始/结束<br>`message_start / message_update / message_end` — 消息流式生命周期<br>`tool_execution_start / tool_execution_update / tool_execution_end` — 工具执行生命周期 |
+| `AgentLoopConfig` | types.ts | 循环引擎配置 | `model: Model` — 本轮使用的模型<br>`convertToLlm` — `AgentMessage[] -> Message[]` 转换<br>`transformContext?` — LLM 调用前的上下文变换<br>`beforeToolCall? / afterToolCall?` — 工具调用前后钩子<br>`getSteeringMessages? / getFollowUpMessages?` — 运行中注入消息 |
+| `AgentState` | agent.ts | Agent 可变状态 | `systemPrompt: string` — 当前系统提示词<br>`model: Model` — 当前模型<br>`thinkingLevel: ThinkingLevel` — 后续 turn 的思考级别<br>`tools` / `messages` — 以 copy-on-assign 方式暴露的数组状态<br>`isStreaming / streamingMessage / pendingToolCalls / errorMessage` — 当前运行态 |
 
 ### pi-coding-agent 层
 
 | 类型 | 文件 | 用途 | 关键字段 |
 |------|------|------|---------|
 | `SessionEntry` | session-manager.ts | 会话持久化条目 | 9 种类型联合：<br>`message` — 用户/助手消息<br>`thinking_level_change` — 思考级别变更<br>`model_change` — 模型切换<br>`compaction` — 压缩记录<br>`branch_summary` — 分支摘要<br>`custom` — 自定义条目<br>`custom_message` — 自定义消息<br>`label` — 标签<br>`session_info` — 会话信息<br>每条有 `id`, `parentId`, `timestamp` |
-| `AgentSession` | agent-session.ts | 产品层 agent 包装 | 组合了 `Agent` + `SessionManager` + `SettingsManager`<br>`prompt(text, options?)` — 发送消息并运行循环<br>`subscribe(handler)` — 订阅事件<br>`abort()` — 中止当前循环 |
-| `Skill` | skill.ts | 能力扩展定义 | `name: string` — 技能名称<br>`description: string` — 描述<br>`filePath: string` — SKILL.md 路径<br>`baseDir: string` — 技能目录<br>`content: string` — markdown 内容 |
-| `Extension` | extension/types.ts | 运行时扩展 | `name: string` — 扩展名称<br>`setup(api)` — 初始化函数<br>API 提供：`registerTool`, `registerCommand`, `on(event, handler)` 等 |
+| `AgentSessionEvent` | agent-session.ts | 产品层事件 | `AgentEvent` 的超集：额外包含 `queue_update`、`compaction_start / compaction_end`、`auto_retry_start / auto_retry_end` |
+| `AgentSession` | agent-session.ts | 产品层 agent 包装 | 组合了 `Agent` + `SessionManager` + `SettingsManager`<br>`prompt(text, options?)` — 发送消息并运行循环<br>`compact(customInstructions?)` — 主动触发压缩<br>`subscribe(listener)` — 订阅 `AgentSessionEvent`<br>`abort()` — 中止当前循环 |
+| `Skill` | skills.ts | 能力扩展定义 | `name: string` — 技能名称<br>`description: string` — 描述<br>`filePath: string` — SKILL.md 路径<br>`baseDir: string` — 技能目录<br>`sourceInfo` — 来源信息<br>`disableModelInvocation` — 是否从 prompt 中隐藏 |
+| `Extension` | core/extensions/types.ts | 运行时扩展 | `name: string` — 扩展名称<br>`setup(api)` — 初始化函数<br>API 提供：`registerTool`, `registerCommand`, `on(event, handler)` 等 |
 
 ## B. 设计模式索引
 
@@ -45,7 +46,7 @@
 | Append-only 树（JSONL + parentId） | session-manager.ts | 第 11 章 | 每条记录有唯一 id 和 parentId。新分支从分支点的 id 开始，旧分支保留不删除。JSONL 格式支持崩溃恢复 |
 | 三级配置覆盖（全局/项目/目录） | settings-manager.ts, resource-loader | 第 13 章 | 全局配置 < 项目配置 < 目录配置。就近原则，越具体越优先。类似 CSS 的层叠覆盖 |
 | Pluggable I/O（EditOperations, BashOperations） | edit.ts, bash.ts, find.ts | 第 19-23 章 | 工具不直接调用 `fs` 或 `child_process`，而是通过接口注入。测试用 mock，Docker 用远程执行 |
-| 极简组件接口（Component { render() }） | tui.ts | 第 24 章 | UI 组件实现 `render(width: number): string[]`，可选 `handleInput?(data)` 和 `invalidate?()`。没有虚拟 DOM、没有状态管理框架 |
+| 极简组件接口（Component） | tui.ts | 第 24 章 | UI 组件实现 `render(width: number): string[]`，可选 `handleInput?(data)`，并要求实现 `invalidate()`。没有虚拟 DOM、没有状态管理框架 |
 | 消息队列串行化 | agent.ts (mom) | 第 28 章 | 所有 Slack API 调用通过 Promise 链串行执行，避免消息乱序。`enqueue()` 返回 void，错误内部处理 |
 | 委托模式（DockerExecutor → HostExecutor） | sandbox.ts | 第 28 章 | DockerExecutor 把命令包装为 `docker exec`，委托给 HostExecutor 执行。关注点分离 |
 
@@ -127,14 +128,14 @@ sequenceDiagram
 ```
 用户输入: /compact
     ↓
-TUI 层: 识别 "/" 前缀，进入 slash command 路由
+interactive-mode: 识别 `/compact` 或 `/compact ...`
     ↓
-coding-agent: 匹配注册的 slash command
+handleCompactCommand(customInstructions)
     ↓
-compact handler: 开始执行
+AgentSession.compact(customInstructions?)
 ```
 
-`/compact` 不经过 LLM — 它是一个本地命令，直接由 coding-agent 的 slash command 系统处理。
+`/compact` 不经过 agent 循环本身。它先由 interactive mode 在本地识别，再直接调用 `AgentSession.compact(...)`。
 
 ### Phase 2：Compaction 触发
 
@@ -159,7 +160,7 @@ compaction_start 事件
   "请总结以下对话的关键信息..."
   + 当前所有消息
     ↓
-streamSimple(compactionModel, compactionContext)
+completeSimple(compactionModel, compactionContext)
   → 调用 LLM 生成总结
     ↓
 收集 LLM 输出 → summary text
@@ -212,7 +213,8 @@ sequenceDiagram
     participant LLM as Compaction LLM
 
     User->>TUI: /compact
-    TUI->>Session: handleSlashCommand("compact")
+    TUI->>TUI: 识别 /compact 并提取自定义指令
+    TUI->>Session: compact(customInstructions?)
     Session->>SM: getEntries()
     SM-->>Session: all entries
     Session->>Session: estimateTokens()
@@ -221,7 +223,7 @@ sequenceDiagram
     Session->>Session: emit(compaction_start)
     TUI-->>TUI: 显示 "Compacting..."
     
-    Session->>LLM: streamSimple(summary prompt)
+    Session->>LLM: completeSimple(summary prompt)
     LLM-->>Session: summary text
     
     Session->>SM: appendCompaction(summary, firstKeptEntryId, tokensBefore, details)
