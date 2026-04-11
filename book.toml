@@ -11,7 +11,7 @@ build-dir = "book"
 [output.html]
 default-theme = "light"
 preferred-dark-theme = "ayu"
-git-repository-url = "https://github.com/nicedoc/pi-mono"
+git-repository-url = "https://github.com/ZhangHanDong/pi-book"
 additional-css = ["theme/custom.css"]
 additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
