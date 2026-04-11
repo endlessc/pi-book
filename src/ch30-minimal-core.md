@@ -35,13 +35,14 @@ pi-agent-core 只有 ~1,859 行，是整个 monorepo 中最小的包。但它定
 
 ```mermaid
 graph TB
-    subgraph Core["内核（~3000 行核心抽象）"]
-        AI["pi-ai\n调模型"]
-        Loop["agent-core\n跑循环"]
-        Agent["Agent\n管状态"]
+    subgraph Core["内核 ~3000 行核心抽象"]
+        AI["pi-ai<br/>调模型"]
+        Loop["agent-core<br/>跑循环"]
+        Agent["Agent<br/>管状态"]
+        AI --> Loop --> Agent
     end
     
-    subgraph External["外置能力（~90,000 行）"]
+    subgraph External["外置能力 ~90000 行"]
         Session["会话树"]
         Compact["Compaction"]
         Prompt["Prompt 装配"]
@@ -52,7 +53,14 @@ graph TB
         Skill["Skill"]
     end
     
-    Core -->|"事件流 + 回调"| External
+    Agent -->|事件流| Session
+    Agent -->|事件流| TUI
+    Loop -->|回调| Compact
+    Loop -->|回调| Prompt
+    Loop -->|回调| Tools
+    Agent -->|注册| Ext
+    Agent -->|注册| Skill
+    Agent -->|回调| Config
     
     style Core fill:#e3f2fd
     style External fill:#e8f5e9
