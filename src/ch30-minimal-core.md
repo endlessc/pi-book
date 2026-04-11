@@ -52,7 +52,7 @@ graph TB
         Skill["Skill"]
     end
     
-    Core ---|"事件流 + 回调"| External
+    Core -->|"事件流 + 回调"| External
     
     style Core fill:#e3f2fd
     style External fill:#e8f5e9
@@ -80,7 +80,7 @@ class MyAgent extends AgentFramework {
 **协议式**（pi）：
 ```typescript
 // 工具只是一个满足 AgentTool 接口的对象
-const searchTool: AgentTool<{ query: string }> = {
+const searchTool: AgentTool<typeof searchSchema> = {
   name: "search",
   label: "search",
   description: "Search for matching content",
